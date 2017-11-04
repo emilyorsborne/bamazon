@@ -14,7 +14,6 @@ var connection = mysql.createConnection({
 });
 
 
-var numberOfProductTypes = 0;
 
 // Connect to DB
 connection.connect(function(err) {
@@ -31,72 +30,61 @@ connection.connect(function(err) {
     console.log(readProducts());
 });
 
-// // Function for the menu options for the customer
-// function menu() {
-//     return inquirer.prompt([{
-//         name: 'item',
-//         message: 'Enter the item number of the product you would like to purchase.',
-//         type: 'input',
-//         // Validator to ensure the product number is a number and it exists
-//         validate: function(value) {
-//             if ((isNaN(value) === false) && (value <= numberOfProductTypes)) {
-//                 return true;
-//             } else {
-//                 console.log('\nPlease enter a valid ID.');
-//                 return false;
-//             }
-//         }
-//     }, {
-//         name: 'quantity',
-//         message: 'How many would you like to buy?',
-//         type: 'input',
-//         // Validator to ensure it is number
-//         validate: function(value) {
-//                 if (isNaN(value) === false) {
-//                     return true;
-//                 } else {
-//                     console.log('\nPlease enter a valid quantity.');
-//                     return false;
-//                 }
-//             }
-//             // new promise to pull all data from SQL
-//     }]).then(function(answer) {
-//         return new Promise(function(resolve, reject) {
-//             connection.query('SELECT * FROM products WHERE ?', { item_id: answer.item }, function(err, res) {
-//                 if (err) reject(err);
-//                 resolve(res);
-//             });
-//             // Then if selected quanitity is valid, save to a local object, else console log error
-//         }).then(function(result) {
-//             var savedData = {};
+function buyProduct() {
+    // query the database for all items being auctioned
+    connection.query("SELECT * FROM products", function(err, results) {
+            if (err) throw err;
+            // once you have the items, prompt the user for which they'd like to bid on
+            inquirer
+                .prompt([{
+                        name: "product",
+                        type: "input",
+                        choices: function() {
+                            var choiceArray = [];
+                            for (var i = 0; i < results.length; i++) {
+                                choiceArray.push(results[i].item_name);
+                            }
+                            return choiceArray;
+                        },
+                        message: "What product would you like to purchase? (please use the item's ID)"
+                    },
+                    {
+                        name: "amount",
+                        type: "input",
+                        message: "How many would you like to purchase?"
+                    }
+                ]).then(function(answer) {
+                        product_ID: answer.product,
+                        product_amount: answer.amount
+                    },
+                    (function(answer) {
+                        // get the information of the chosen item
+                        var chosenItem;
+                        for (var i = 0; i < results.length; i++) {
+                            if (results[i].product_ID === answer.choice) {
+                                chosenItem = results[i];
+                            }
+                        }
 
-//             if (parseInt(answer.quantity) <= parseInt(result[0].stock_quantity)) {
-//                 savedData.answer = answer;
-//                 savedData.result = result;
-//             } else if (parseInt(answer.quantity) > parseInt(result[0].stock_quantity)) {
-//                 console.log('Insufficient quantity!');
-//             } else {
-//                 console.log('An error occurred, exiting Bamazon, your order is not complete.');
-//             }
-
-//             return savedData;
-//             // Update the SQL DB and console log messages for completion.
-//         }).then(function(savedData) {
-//             if (savedData.answer) {
-//                 var updatedQuantity = parseInt(savedData.result[0].stock_quantity) - parseInt(savedData.answer.quantity);
-//                 var itemId = savedData.answer.item;
-//                 var totalCost = parseInt(savedData.result[0].price) * parseInt(savedData.answer.quantity);
-//                 connection.query('UPDATE products SET ? WHERE ?', [{
-//                     stock_quantity: updatedQuantity
-//                 }, {
-//                     item_id: itemId
-//                 }], function(err, res) {
-//                     if (err) throw err;
-//                     console.log('Your order total cost $' + totalCost + '. Thank you for shopping with Bamazon!');
-//                     connection.destroy();
-//                 });
-//             } else {
-//                 // Recursion to re-enter store
-//                 enterStore();
-//             }
-//         };
+                        //is there enough stock?
+                        if (stock_quantity > parseInt(answer.amount)) {
+                            connection.query(
+                                "UPDATE products SET ? WHERE ?", [{
+                                        stock_quantity = stock_quantity - product_amount
+                                    },
+                                    {
+                                        id: chosenItem.id
+                                    }
+                                ],
+                                function(error) {
+                                    if (error) throw err;
+                                    console.log("Order was placed successfully!");
+                                }
+                            );
+                        } else {
+                            // bid wasn't high enough, so apologize and start over
+                            console.log("Sorry we do not have enough of that product. Please enter a lower amount.");
+                        }
+                    });
+                });
+    }
